@@ -5,7 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from casa_phase_ref.config import StopAfter, load_config
+from casa_phase_ref.config import ManualFlagRule, StopAfter, load_config
+from casa_phase_ref.errors import ValidationReportError
 from casa_phase_ref.pipeline import run_pipeline
 
 
@@ -18,10 +19,7 @@ def fake_casa_tasks():
         "flagmanager",
         "fluxscale",
         "gaincal",
-        "imhead",
-        "imstat",
         "listobs",
-        "plotms",
         "setjy",
         "split",
         "tclean",
@@ -135,3 +133,74 @@ def test_pipeline_rflag_can_be_disabled(example_config_path, fake_casa_tasks, tm
     run_pipeline(cfg, casa_tasks=fake_casa_tasks)
     modes = [call.kwargs.get("mode") for call in fake_casa_tasks["flagdata"].call_args_list]
     assert "rflag" not in modes
+
+
+def test_pipeline_stops_after_bandpass_skips_later_steps(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.execution.stop_after = StopAfter.BANDPASS
+    summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert summary["steps"][-1]["name"] == "bandpass"
+    assert not fake_casa_tasks["fluxscale"].called
+    assert not fake_casa_tasks["applycal"].called
+    assert not fake_casa_tasks["tclean"].called
+
+
+def test_pipeline_flag_backup_disabled_skips_all_saves(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.safety.require_flag_backup = False
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    save_calls = [
+        c for c in fake_casa_tasks["flagmanager"].call_args_list if c.kwargs.get("mode") == "save"
+    ]
+    assert len(save_calls) == 0
+
+
+def test_pipeline_manual_flag_passes_empty_spw(example_config_path, fake_casa_tasks, tmp_path):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.flagging.manual = [ManualFlagRule(spw="", antenna="ea01")]
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    manual_calls = [
+        c
+        for c in fake_casa_tasks["flagdata"].call_args_list
+        if c.kwargs.get("mode") == "manual" and "antenna" in c.kwargs
+    ]
+    assert len(manual_calls) == 1
+    assert manual_calls[0].kwargs["spw"] == ""
+
+
+def test_pipeline_raises_on_selfcal_enabled(example_config_path, fake_casa_tasks, tmp_path):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.selfcal.enabled = True
+    with pytest.raises(ValidationReportError, match="selfcal is not yet implemented"):
+        run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+
+
+def test_pipeline_raises_on_target_interp_mismatch(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.calibration.apply.target_interp = ["nearest"]  # wrong length for 4 gaintables
+    with pytest.raises(ValidationReportError, match="target_interp"):
+        run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+
+
+def test_pipeline_inspection_key_present_on_success(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert "inspection" in summary
+    assert summary["inspection"] is not None
+
+
+def test_pipeline_warnings_emitted_for_missing_vis(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    # example config points to my_observation.ms which does not exist
+    summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert any("does not exist" in w for w in summary["warnings"])

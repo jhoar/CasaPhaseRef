@@ -14,15 +14,12 @@ def load_casa_tasks() -> dict[str, Any]:
             flagmanager,
             fluxscale,
             gaincal,
-            imhead,
-            imstat,
             listobs,
-            plotms,
             setjy,
             split,
             tclean,
         )
-    except Exception as exc:  # pragma: no cover - environment dependent
+    except ImportError as exc:
         raise CasaUnavailableError(
             "CASA tasks are not available. Run inside CASA 6, or install supported "
             "casatasks/casatools wheels for your platform."
@@ -35,10 +32,7 @@ def load_casa_tasks() -> dict[str, Any]:
         "flagmanager": flagmanager,
         "fluxscale": fluxscale,
         "gaincal": gaincal,
-        "imhead": imhead,
-        "imstat": imstat,
         "listobs": listobs,
-        "plotms": plotms,
         "setjy": setjy,
         "split": split,
         "tclean": tclean,

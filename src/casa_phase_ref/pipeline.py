@@ -6,7 +6,7 @@ from typing import Any
 
 from .casa_runtime import load_casa_tasks
 from .config import PhaseRefConfig, StopAfter
-from .errors import PipelineStepError
+from .errors import PipelineStepError, ValidationReportError
 from .run_context import (
     base_summary,
     create_run_paths,
@@ -38,7 +38,17 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     paths = create_run_paths(cfg)
     logger = setup_logging(paths)
     summary = base_summary(cfg)
-    summary["warnings"].extend(validate_static_config(cfg))
+
+    try:
+        warnings = validate_static_config(cfg)
+    except ValidationReportError as exc:
+        summary["errors"].append({"step": "validation", "error": str(exc)})
+        write_json(paths.reports / "run-summary.json", summary)
+        raise
+
+    summary["warnings"].extend(warnings)
+    for w in warnings:
+        logger.warning(w)
 
     logger.info("Starting CASA phase-referencing pipeline")
     logger.info("Run directory: %s", paths.root)
@@ -51,22 +61,22 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     refant = cfg.refant
     spw = cfg.spw
 
-    delay_cal = str(paths.calibration / "cal.K")
-    bp_prephase_cal = str(paths.calibration / "cal.BPpre.G")
-    bp_cal = str(paths.calibration / "cal.B")
-    phase_cal = str(paths.calibration / "cal.Gp")
-    amp_cal = str(paths.calibration / "cal.Gap")
-    flux_cal = str(paths.calibration / "cal.fluxscale")
+    delay_cal = paths.calibration / "cal.K"
+    bp_prephase_cal = paths.calibration / "cal.BPpre.G"
+    bp_cal = paths.calibration / "cal.B"
+    phase_cal = paths.calibration / "cal.Gp"
+    amp_cal = paths.calibration / "cal.Gap"
+    flux_cal = paths.calibration / "cal.fluxscale"
     target_ms = paths.products / f"{target}_calibrated.ms"
     imagename = str(paths.products / cfg.imaging.imagename)
 
-    products_to_check = [
-        Path(delay_cal),
-        Path(bp_prephase_cal),
-        Path(bp_cal),
-        Path(phase_cal),
-        Path(amp_cal),
-        Path(flux_cal),
+    products_to_check: list[Path] = [
+        delay_cal,
+        bp_prephase_cal,
+        bp_cal,
+        phase_cal,
+        amp_cal,
+        flux_cal,
         target_ms,
     ]
     for product in products_to_check:
@@ -102,10 +112,11 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
                 action="apply",
             )
         for rule in cfg.flagging.manual:
-            kwargs = {k: v for k, v in rule.model_dump().items() if v and k != "reason"}
+            kwargs = {k: v for k, v in rule.model_dump().items() if v is not None and k != "reason"}
             if kwargs:
                 casa["flagdata"](vis=vis, mode="manual", **kwargs)
-        casa["flagmanager"](vis=vis, mode="save", versionname="after_initial_flagging")
+        if cfg.safety.require_flag_backup:
+            casa["flagmanager"](vis=vis, mode="save", versionname="after_initial_flagging")
 
     logger.info("Running flagging")
     _call_step("flagging", flagging_step, summary)
@@ -128,7 +139,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         if cfg.calibration.delay.enabled:
             casa["gaincal"](
                 vis=vis,
-                caltable=delay_cal,
+                caltable=str(delay_cal),
                 field=delay_field,
                 spw=spw,
                 gaintype="K",
@@ -148,26 +159,26 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     def bandpass_step() -> None:
         casa["gaincal"](
             vis=vis,
-            caltable=bp_prephase_cal,
+            caltable=str(bp_prephase_cal),
             field=bandpass_field,
             spw=spw,
             solint="int",
             calmode="p",
             refant=refant,
-            gaintable=[delay_cal] if cfg.calibration.delay.enabled else [],
+            gaintable=[str(delay_cal)] if cfg.calibration.delay.enabled else [],
         )
         if cfg.calibration.bandpass.enabled:
             casa["bandpass"](
                 vis=vis,
-                caltable=bp_cal,
+                caltable=str(bp_cal),
                 field=bandpass_field,
                 spw=spw,
                 solint=cfg.calibration.bandpass.solint,
                 combine=cfg.calibration.bandpass.combine,
                 refant=refant,
-                gaintable=[delay_cal, bp_prephase_cal]
+                gaintable=[str(delay_cal), str(bp_prephase_cal)]
                 if cfg.calibration.delay.enabled
-                else [bp_prephase_cal],
+                else [str(bp_prephase_cal)],
             )
 
     logger.info("Solving bandpass calibration")
@@ -176,16 +187,16 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         write_json(paths.reports / "run-summary.json", summary)
         return summary
 
-    base_gaintables = []
+    base_gaintables: list[str] = []
     if cfg.calibration.delay.enabled:
-        base_gaintables.append(delay_cal)
+        base_gaintables.append(str(delay_cal))
     if cfg.calibration.bandpass.enabled:
-        base_gaintables.append(bp_cal)
+        base_gaintables.append(str(bp_cal))
 
     def gains_step() -> None:
         casa["gaincal"](
             vis=vis,
-            caltable=phase_cal,
+            caltable=str(phase_cal),
             field=",".join([fluxcal, phasecal]),
             spw=spw,
             solint=cfg.calibration.phase_gain.solint,
@@ -195,13 +206,13 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         )
         casa["gaincal"](
             vis=vis,
-            caltable=amp_cal,
+            caltable=str(amp_cal),
             field=",".join([fluxcal, phasecal]),
             spw=spw,
             solint=cfg.calibration.amplitude_gain.solint,
             calmode=cfg.calibration.amplitude_gain.calmode,
             refant=refant,
-            gaintable=base_gaintables + [phase_cal],
+            gaintable=base_gaintables + [str(phase_cal)],
         )
 
     logger.info("Solving gain calibration")
@@ -213,8 +224,8 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     def fluxscale_step() -> None:
         casa["fluxscale"](
             vis=vis,
-            caltable=amp_cal,
-            fluxtable=flux_cal,
+            caltable=str(amp_cal),
+            fluxtable=str(flux_cal),
             reference=fluxcal,
             transfer=phasecal,
         )
@@ -225,8 +236,8 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         write_json(paths.reports / "run-summary.json", summary)
         return summary
 
-    gaintables = base_gaintables + [phase_cal, flux_cal]
-    band_gainfields = []
+    gaintables = base_gaintables + [str(phase_cal), str(flux_cal)]
+    band_gainfields: list[str] = []
     if cfg.calibration.delay.enabled:
         band_gainfields.append(delay_field)
     if cfg.calibration.bandpass.enabled:
@@ -257,7 +268,8 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
             interp=cfg.calibration.apply.target_interp,
             calwt=cfg.calwt,
         )
-        casa["flagmanager"](vis=vis, mode="save", versionname="after_applycal")
+        if cfg.safety.require_flag_backup:
+            casa["flagmanager"](vis=vis, mode="save", versionname="after_applycal")
 
     logger.info("Applying calibration")
     _call_step("applycal", applycal_step, summary)

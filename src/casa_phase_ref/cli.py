@@ -5,6 +5,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from .casa_runtime import load_casa_tasks
 from .config import load_config
 from .errors import CasaPhaseRefError
@@ -92,20 +94,21 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "validate":
             return cmd_validate(args.config)
-        if args.command == "inspect":
+        elif args.command == "inspect":
             return cmd_inspect(args.config)
-        if args.command == "run":
+        elif args.command == "run":
             return cmd_run(args.config)
-        if args.command == "clean-products":
+        else:  # clean-products — argparse enforces no other value
             return cmd_clean(args.config, args.yes)
     except CasaPhaseRefError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
+    except ValidationError as exc:
+        print(f"ERROR: Invalid configuration:\n{exc}", file=sys.stderr)
+        return 2
     except FileNotFoundError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
-    parser.error(f"Unknown command: {args.command}")
-    return 2
 
 
 if __name__ == "__main__":

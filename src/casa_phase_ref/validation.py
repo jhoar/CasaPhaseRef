@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import ObservatoryProfile, PhaseRefConfig
+from .errors import ValidationReportError
 
 
 def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
@@ -14,8 +15,21 @@ def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
             "fringe-fitting/EOP/ionosphere-specific calibration. Use this profile for validation "
             "only unless you extend the pipeline path."
         )
-    if cfg.selfcal.enabled and not cfg.selfcal.rounds:
-        warnings.append("selfcal.enabled=true but no selfcal rounds are configured.")
+    if cfg.selfcal.enabled:
+        raise ValidationReportError(
+            "selfcal is not yet implemented. Set selfcal.enabled=false."
+        )
+    expected_tables = (
+        2 + int(cfg.calibration.delay.enabled) + int(cfg.calibration.bandpass.enabled)
+    )
+    actual = len(cfg.calibration.apply.target_interp)
+    if actual != expected_tables:
+        raise ValidationReportError(
+            f"calibration.apply.target_interp has {actual} entries but {expected_tables} "
+            f"gaintables are configured "
+            f"(delay={cfg.calibration.delay.enabled}, bandpass={cfg.calibration.bandpass.enabled}). "
+            f"Update target_interp to have exactly {expected_tables} entries."
+        )
     if not Path(cfg.vis).exists():
         warnings.append(f"Measurement Set path does not exist at validation time: {cfg.vis}")
     return warnings
