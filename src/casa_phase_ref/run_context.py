@@ -39,14 +39,18 @@ def create_run_paths(cfg: PhaseRefConfig) -> RunPaths:
         raise ProductExistsError(f"Run directory already exists: {root}")
     for path in paths.__dict__.values():
         path.mkdir(parents=True, exist_ok=True)
-    dump_resolved_config(cfg, root / "config.resolved.yaml")
+    resolved_config_path = root / "config.resolved.yaml"
+    if not cfg.execution.resume or not resolved_config_path.exists():
+        dump_resolved_config(cfg, resolved_config_path)
     return paths
 
 
 def setup_logging(paths: RunPaths) -> logging.Logger:
     logger = logging.getLogger("casa_phase_ref")
     logger.setLevel(logging.INFO)
-    logger.handlers.clear()
+    for h in logger.handlers[:]:
+        logger.removeHandler(h)
+        h.close()
 
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 
@@ -100,4 +104,5 @@ def base_summary(cfg: PhaseRefConfig) -> dict[str, Any]:
         "steps": [],
         "warnings": [],
         "errors": [],
+        "inspection": None,
     }
