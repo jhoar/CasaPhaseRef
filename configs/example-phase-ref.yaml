@@ -1,0 +1,69 @@
+vis: "my_observation.ms"
+fluxcal: "3C286"
+bandcal: "3C286"
+phasecal: "J1234+5678"
+target: "TARGET"
+refant: "ea10"
+spw: ""
+flux_standard: "Perley-Butler 2017"
+calwt: false
+
+observatory:
+  profile: "generic"
+  apply_antpos: false
+  apply_switched_power: false
+
+execution:
+  output_dir: "runs/example_TARGET"
+  overwrite: false
+  resume: true
+  stop_after: null
+
+safety:
+  require_flag_backup: true
+  write_corrected_data: true
+  allow_in_place_ms_modification: true
+
+flagging:
+  autocorr: true
+  shadow: true
+  clip_zeros: true
+  rflag: true
+  manual: []
+
+calibration:
+  delay:
+    enabled: true
+    field: null
+    solint: "inf"
+    combine: "scan"
+  bandpass:
+    enabled: true
+    field: null
+    solint: "inf"
+    combine: "scan"
+  phase_gain:
+    solint: "int"
+    calmode: "p"
+  amplitude_gain:
+    solint: "inf"
+    calmode: "ap"
+  apply:
+    target_interp: ["nearest", "nearest", "linear", "linear"]
+
+imaging:
+  imagename: "target_phase_ref"
+  cell: "0.2arcsec"
+  imsize: [2048, 2048]
+  weighting: "briggs"
+  robust: 0.5
+  niter: 10000
+  threshold: "30uJy"
+  specmode: "mfs"
+  deconvolver: "mtmfs"
+  nterms: 2
+  interactive: false
+
+selfcal:
+  enabled: false
+  rounds: []

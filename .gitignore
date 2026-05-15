@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# CASA / radio astronomy outputs
+*.ms/
+*.ms.flagversions/
+*.image/
+*.image.tt0/
+*.image.tt1/
+*.model/
+*.model.tt0/
+*.model.tt1/
+*.residual/
+*.residual.tt0/
+*.residual.tt1/
+*.psf/
+*.pb/
+*.sumwt/
+*.mask/
+*.flux/
+*.log
+
+# Calibration tables
+cal.*/
+*.cal/
+*.G/
+*.K/
+*.B/
+
+# Local generated data
+runs/
+data/
+raw/
+products/
