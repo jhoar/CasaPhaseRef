@@ -12,7 +12,7 @@ from casa_phase_ref.config import (
     load_config,
 )
 from casa_phase_ref.errors import ValidationReportError
-from casa_phase_ref.pipeline import run_pipeline
+from casa_phase_ref.pipeline import compose_gaintable_chain, run_pipeline
 
 
 @pytest.fixture
@@ -386,3 +386,63 @@ def test_pipeline_pulsecal_manual_table_requires_existing_path(example_config_pa
     with pytest.raises(Exception, match="Pipeline step failed: pulsecal"):
 
         run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+
+
+def test_compose_gaintable_chain_deterministic_order(example_config_path):
+    cfg = load_config(example_config_path)
+    cfg.calibration.ionosphere.enabled = True
+    cfg.calibration.pulsecal.enabled = True
+    chain = compose_gaintable_chain(
+        cfg,
+        tec_table="tec.G",
+        eop_table="EOP",
+        pulsecal_table="pulse.G",
+        delay_table="K",
+        bandpass_table="B",
+        fringe_global_table="fringe.global",
+        fringe_phase_table="fringe.phase",
+        phase_gain_table="Gp",
+        amplitude_gain_table="Gflux",
+        include_pulsecal_for_calibrators=True,
+        include_fringe_for_target=True,
+    )
+    assert chain == ["tec.G", "pulse.G", "K", "B", "Gp", "Gflux"]
+
+
+def test_compose_gaintable_chain_vlbi_with_eop_and_fringe(example_config_path):
+    from casa_phase_ref.config import ObservatoryProfile
+
+    cfg = load_config(example_config_path)
+    cfg.observatory.profile = ObservatoryProfile.VLBI
+    cfg.vlbi.eop.enabled = True
+    cfg.calibration.ionosphere.enabled = True
+    cfg.fringe_fitting.enabled = True
+    cfg.fringe_fitting.global_fit = FringeFitSolveConfig(field="3C286", caltable="fg", solint="inf", refant="ea10")
+    cfg.fringe_fitting.phase_reference = FringeFitSolveConfig(field="J1234+5678", caltable="fp", solint="scan", refant="ea10")
+    chain = compose_gaintable_chain(
+        cfg,
+        tec_table="tec.G",
+        eop_table="EOP",
+        delay_table="K",
+        bandpass_table="B",
+        fringe_global_table="fringe.global",
+        fringe_phase_table="fringe.phase",
+        phase_gain_table="Gp",
+        include_fringe_for_target=True,
+    )
+    assert chain == ["EOP", "tec.G", "K", "B", "fringe.global", "fringe.phase", "Gp"]
+
+
+def test_compose_gaintable_chain_pulsecal_target_toggle(example_config_path):
+    cfg = load_config(example_config_path)
+    cfg.calibration.pulsecal.enabled = True
+    chain = compose_gaintable_chain(
+        cfg,
+        delay_table="K",
+        bandpass_table="B",
+        pulsecal_table="pulse.G",
+        phase_gain_table="Gp",
+        include_pulsecal_for_target=True,
+        include_pulsecal_for_calibrators=False,
+    )
+    assert chain == ["K", "B", "pulse.G", "Gp"]
