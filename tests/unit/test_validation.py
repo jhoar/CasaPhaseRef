@@ -101,3 +101,15 @@ def test_validate_raises_when_vlbi_fringe_enabled_without_solves():
     cfg = _cfg(observatory={"profile": "vlbi"}, fringe_fitting={"enabled": True})
     with pytest.raises(ValidationReportError, match="requires at least one solve"):
         validate_static_config(cfg)
+
+
+def test_validate_warns_for_vlbi_profile_when_tec_disabled():
+    cfg = _cfg(observatory={"profile": "vlbi"})
+    warnings = validate_static_config(cfg)
+    assert any("calibration.ionosphere.enabled=false" in w for w in warnings)
+
+
+def test_validate_raises_when_ionex_source_has_no_file():
+    cfg = _cfg(calibration={"ionosphere": {"enabled": True, "tec_source": "ionex_file"}, "apply": {"target_interp": ["nearest", "nearest", "nearest", "linear", "linear"]}})
+    with pytest.raises(ValidationReportError, match="ionosphere.ionex_file"):
+        validate_static_config(cfg)

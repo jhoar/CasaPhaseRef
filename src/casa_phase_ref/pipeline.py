@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .casa_runtime import load_casa_tasks
-from .calibration_utils import apply_eop_correction
+from .calibration_utils import apply_eop_correction, apply_tec_correction
 from .config import ObservatoryProfile, PhaseRefConfig, StopAfter
 from .errors import PipelineStepError, ValidationReportError
 from .run_context import (
@@ -63,6 +63,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     spw = cfg.spw
 
     delay_cal = paths.calibration / "cal.K"
+    tec_cal = paths.calibration / f"{Path(vis).stem}.tec.G"
     bp_prephase_cal = paths.calibration / "cal.BPpre.G"
     bp_cal = paths.calibration / "cal.B"
     phase_cal = paths.calibration / "cal.Gp"
@@ -80,6 +81,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
             fringe_phase_cal = paths.calibration / cfg.fringe_fitting.phase_reference.caltable_name
 
     products_to_check: list[Path] = [
+        tec_cal,
         delay_cal,
         bp_prephase_cal,
         bp_cal,
@@ -105,6 +107,20 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     if _should_stop(cfg, StopAfter.LISTOBS):
         write_json(paths.reports / "run-summary.json", summary)
         return summary
+
+    def tec_step() -> None:
+        if not cfg.calibration.ionosphere.enabled:
+            return
+        apply_tec_correction(
+            vis,
+            cfg,
+            casa_tasks=casa,
+            logger=logger,
+            caltable_path=str(tec_cal),
+        )
+
+    logger.info("Applying ionospheric TEC correction stage")
+    _call_step("apply_tec_correction", tec_step, summary)
 
     def flagging_step() -> None:
         if cfg.safety.require_flag_backup:
@@ -219,6 +235,8 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         return summary
 
     base_gaintables: list[str] = []
+    if cfg.calibration.ionosphere.enabled:
+        base_gaintables.append(str(tec_cal))
     if cfg.calibration.delay.enabled:
         base_gaintables.append(str(delay_cal))
     if cfg.calibration.bandpass.enabled:

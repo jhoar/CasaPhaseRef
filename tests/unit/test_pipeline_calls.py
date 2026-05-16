@@ -333,3 +333,33 @@ def test_pipeline_vlbi_eop_enabled_runs_before_delay(
     assert fake_casa_tasks["gencal"].called
     first_delay_index = next(i for i, c in enumerate(fake_casa_tasks["gaincal"].call_args_list) if c.kwargs.get("gaintype") == "K")
     assert first_delay_index == 0
+
+
+def test_pipeline_tec_enabled_creates_deterministic_table_name(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.calibration.ionosphere.enabled = True
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "nearest", "linear", "linear"]
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    tec_call = next(
+        c for c in fake_casa_tasks["gencal"].call_args_list if c.kwargs.get("caltype") == "tecim"
+    )
+    assert tec_call.kwargs["caltable"].endswith("calibration/my_observation.tec.G")
+
+
+def test_pipeline_tec_uses_ionex_file_when_configured(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    ionex_file = tmp_path / "codg0010.24i"
+    ionex_file.write_text("IONEX")
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.calibration.ionosphere.enabled = True
+    cfg.calibration.ionosphere.tec_source = "ionex_file"
+    cfg.calibration.ionosphere.ionex_file = str(ionex_file)
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "nearest", "linear", "linear"]
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    tec_call = next(
+        c for c in fake_casa_tasks["gencal"].call_args_list if c.kwargs.get("caltype") == "tecim"
+    )
+    assert tec_call.kwargs["infile"] == str(ionex_file)

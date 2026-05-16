@@ -30,8 +30,9 @@ The main `run` command executes these steps:
    - optional `rflag`
    - optional manual flag rules
 6. Sets the flux calibrator model with `setjy`.
-7. For `observatory.profile: "vlbi"`, optionally applies EOP correction (`apply_eop_correction`) before delay/fringe solves when `vlbi.eop.enabled: true`.
-8. Solves instrumental delay with `gaincal(..., gaintype="K")`, if enabled.
+7. Optionally applies ionospheric TEC correction (`apply_tec_correction`) before fringe/delay solves when `calibration.ionosphere.enabled: true`.
+8. For `observatory.profile: "vlbi"`, optionally applies EOP correction (`apply_eop_correction`) before delay/fringe solves when `vlbi.eop.enabled: true`.
+9. Solves instrumental delay with `gaincal(..., gaintype="K")`, if enabled.
 9. Solves a short pre-bandpass phase solution.
 10. Solves bandpass calibration, if enabled.
 11. Solves phase gains for flux and phase calibrators.
@@ -2327,3 +2328,30 @@ When `source: "file"`, the file must exist and use one of these extensions: `.tx
 7. optional `fringefit` solves
 8. gains + `fluxscale`
 9. `applycal` / split / image
+
+
+### Ionospheric TEC correction (VLBI/general calibration)
+
+The pipeline supports a dedicated ionospheric correction block under `calibration`:
+
+```yaml
+calibration:
+  ionosphere:
+    enabled: true
+    tec_source: auto        # auto | ionex_file
+    ionex_file: null        # required when tec_source=ionex_file
+    interp: linear          # CASA applycal interpolation mode
+```
+
+Behavior:
+- When enabled, the pipeline creates a deterministic TEC table in the run calibration directory using `<ms_stem>.tec.G`.
+- The TEC table is generated via CASA `gencal(caltype="tecim")` and immediately applied before fringe fitting and delay solving.
+- `tec_source: auto` delegates TEC map selection to CASA defaults/tooling.
+- `tec_source: ionex_file` requires `ionex_file` to exist; validation fails fast if the file path is missing or invalid.
+
+When to prefer external IONEX inputs:
+- You need strict reproducibility across re-runs and systems.
+- Your correlator/analysis center provides a recommended IONEX product for the experiment epoch.
+- You need to control the exact TEC model version used in publications or QA handoff.
+
+If `observatory.profile: vlbi` and TEC correction is disabled, the pipeline emits an explicit warning so that skipping ionospheric correction is a conscious decision.

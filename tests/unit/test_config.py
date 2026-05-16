@@ -148,3 +148,28 @@ def test_vlbi_eop_file_source_parses():
     assert cfg.vlbi.eop.enabled is True
     assert cfg.vlbi.eop.source == "file"
     assert cfg.vlbi.eop.file == "iers.eop"
+
+
+def test_ionosphere_config_parses():
+    cfg = PhaseRefConfig.model_validate(
+        {
+            "vis": "obs.ms",
+            "fluxcal": "3C286",
+            "bandcal": "3C286",
+            "phasecal": "J1234+5678",
+            "target": "TARGET",
+            "refant": "ea10",
+            "calibration": {
+                "ionosphere": {
+                    "enabled": True,
+                    "tec_source": "ionex_file",
+                    "ionex_file": "codg0010.24i",
+                    "interp": "nearest",
+                }
+            },
+        }
+    )
+    assert cfg.calibration.ionosphere.enabled is True
+    assert cfg.calibration.ionosphere.tec_source == "ionex_file"
+    assert cfg.calibration.ionosphere.ionex_file == "codg0010.24i"
+    assert cfg.calibration.ionosphere.interp == "nearest"
