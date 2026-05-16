@@ -48,8 +48,13 @@ calibration:
   amplitude_gain:
     solint: "inf"
     calmode: "ap"
+  pulsecal:
+    enabled: false
+    mode: "auto"
+    table: null
+    apply_to: "both"
   apply:
-    # K, B, Gp, Gap, fringe.global, fringe.phase_reference
+    # K, pulsecal(optional), B, Gp, Gap, fringe.global, fringe.phase_reference
     target_interp: ["nearest", "nearest", "linear", "linear", "linear", "linear"]
 
 fringe_fitting:

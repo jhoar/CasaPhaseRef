@@ -11,7 +11,7 @@ Applies to: the repository/package generated in this project
 
 The package is intended to make a common phase-referenced continuum calibration sequence reproducible and scriptable. Instead of editing a large CASA script for every observation, you describe the observation and calibration choices in a YAML configuration file, then run the pipeline through a command-line interface.
 
-The current implementation is best understood as a robust generic connected-interferometer pipeline skeleton. It supports VLA-like, ALMA-like, generic, and VLBI profile workflows at the configuration level. The VLBI path now includes optional fringe fitting (`fringe_fitting`) for global and/or phase-reference solves, with optional transfer to the target. It is still not a full observatory-certified VLBI pipeline: EOP correction, ionospheric TEC correction, pulse-cal handling, and additional observatory-specific amplitude/delay-rate practices remain user responsibilities.
+The current implementation is best understood as a robust generic connected-interferometer pipeline skeleton. It supports VLA-like, ALMA-like, generic, and VLBI profile workflows at the configuration level. The VLBI path now includes optional fringe fitting (`fringe_fitting`) for global and/or phase-reference solves, with optional transfer to the target. It is still not a full observatory-certified VLBI pipeline: EOP correction, ionospheric TEC correction, pulse-cal handling is supported in baseline form (auto/manual table), but observatory-specific tone extraction strategy and QA thresholds still require local override policies.
 
 ---
 
@@ -2355,3 +2355,14 @@ When to prefer external IONEX inputs:
 - You need to control the exact TEC model version used in publications or QA handoff.
 
 If `observatory.profile: vlbi` and TEC correction is disabled, the pipeline emits an explicit warning so that skipping ionospheric correction is a conscious decision.
+
+
+## Pulse-cal notes
+
+- Configure `calibration.pulsecal.enabled` to turn pulse-cal on/off.
+- `calibration.pulsecal.mode: auto` builds a pulse-cal table from MS pulse tones.
+- `calibration.pulsecal.mode: manual_table` reuses a precomputed CASA table (`calibration.pulsecal.table`).
+- `calibration.pulsecal.apply_to` controls whether pulse-cal is chained into calibrator solves, target applycal, or both (`calibrators`, `target`, `both`, `none`).
+- QA output is written in `run-summary.json` under `qa.pulsecal` with per-SPW tone counts, failed stations, residual placeholders, and warnings for sparse/missing tone contexts.
+
+Operational caveat: different arrays/recording systems encode pulse-cal tones differently. Validate the chosen mode against observatory recipes (e.g., EVN/VLBA/GMVA local scripts) before production processing.

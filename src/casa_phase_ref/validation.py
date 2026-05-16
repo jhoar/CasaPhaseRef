@@ -39,11 +39,13 @@ def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
         raise ValidationReportError(
             "selfcal is not yet implemented. Set selfcal.enabled=false."
         )
+    pulsecal_on_target = cfg.calibration.pulsecal.enabled and cfg.calibration.pulsecal.apply_to in {"target", "both"}
     expected_tables = (
         2
         + int(cfg.calibration.ionosphere.enabled)
         + int(cfg.calibration.delay.enabled)
         + int(cfg.calibration.bandpass.enabled)
+        + int(pulsecal_on_target)
     )
     if (
         cfg.observatory.profile == ObservatoryProfile.VLBI
@@ -62,6 +64,8 @@ def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
         )
     if not Path(cfg.vis).exists():
         warnings.append(f"Measurement Set path does not exist at validation time: {cfg.vis}")
+    if cfg.calibration.pulsecal.mode == "manual_table" and not cfg.calibration.pulsecal.table:
+        raise ValidationReportError("calibration.pulsecal.table must be set when pulsecal.mode=manual_table.")
     if cfg.calibration.ionosphere.enabled and cfg.calibration.ionosphere.tec_source == "ionex_file":
         ionex_file = cfg.calibration.ionosphere.ionex_file
         if not ionex_file:
@@ -92,3 +96,5 @@ def inspect_measurement_set(
         "checked_refant": cfg.refant,
         "checked_spw": cfg.spw,
     }
+
+

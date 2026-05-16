@@ -105,4 +105,5 @@ def base_summary(cfg: PhaseRefConfig) -> dict[str, Any]:
         "warnings": [],
         "errors": [],
         "inspection": None,
+        "qa": {},
     }
