@@ -42,7 +42,11 @@ def test_validate_warns_for_vlbi_profile_when_eop_disabled():
 
 
 def test_validate_warns_for_vlbi_profile_when_eop_enabled():
-    cfg = _cfg(observatory={"profile": "vlbi"}, vlbi={"eop": {"enabled": True}})
+    cfg = _cfg(
+        observatory={"profile": "vlbi"},
+        vlbi={"eop": {"enabled": True}},
+        calibration={"apply": {"target_interp": ["nearest", "nearest", "nearest", "linear", "linear"]}},
+    )
     warnings = validate_static_config(cfg)
     assert any("EOP correction is enabled" in w for w in warnings)
 
@@ -112,4 +116,14 @@ def test_validate_warns_for_vlbi_profile_when_tec_disabled():
 def test_validate_raises_when_ionex_source_has_no_file():
     cfg = _cfg(calibration={"ionosphere": {"enabled": True, "tec_source": "ionex_file"}, "apply": {"target_interp": ["nearest", "nearest", "nearest", "linear", "linear"]}})
     with pytest.raises(ValidationReportError, match="ionosphere.ionex_file"):
+        validate_static_config(cfg)
+
+
+def test_validate_target_interp_counts_vlbi_eop_table():
+    cfg = _cfg(
+        observatory={"profile": "vlbi"},
+        vlbi={"eop": {"enabled": True}},
+        calibration={"apply": {"target_interp": ["nearest", "nearest", "linear", "linear"]}},
+    )
+    with pytest.raises(ValidationReportError, match="target_interp"):
         validate_static_config(cfg)

@@ -43,6 +43,7 @@ def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
     expected_tables = (
         2
         + int(cfg.calibration.ionosphere.enabled)
+        + int(cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.vlbi.eop.enabled)
         + int(cfg.calibration.delay.enabled)
         + int(cfg.calibration.bandpass.enabled)
         + int(pulsecal_on_target)
@@ -96,5 +97,4 @@ def inspect_measurement_set(
         "checked_refant": cfg.refant,
         "checked_spw": cfg.spw,
     }
-
 
