@@ -1,0 +1,86 @@
+vis: "my_vlbi_observation.ms"
+fluxcal: "J1331+3030"
+bandcal: "J0319+4130"
+phasecal: "J1234+5678"
+target: "TARGET"
+refant: "BR"
+spw: ""
+flux_standard: "Perley-Butler 2017"
+calwt: false
+
+observatory:
+  profile: "vlbi"
+  apply_antpos: false
+  apply_switched_power: false
+
+execution:
+  output_dir: "runs/example_vlbi_TARGET"
+  overwrite: false
+  resume: true
+  stop_after: null
+
+safety:
+  require_flag_backup: true
+  write_corrected_data: true
+  allow_in_place_ms_modification: true
+
+flagging:
+  autocorr: true
+  shadow: false
+  clip_zeros: true
+  rflag: true
+  manual: []
+
+calibration:
+  delay:
+    enabled: true
+    field: "J0319+4130"
+    solint: "inf"
+    combine: "scan"
+  bandpass:
+    enabled: true
+    field: "J0319+4130"
+    solint: "inf"
+    combine: "scan"
+  phase_gain:
+    solint: "int"
+    calmode: "p"
+  amplitude_gain:
+    solint: "inf"
+    calmode: "ap"
+  apply:
+    # K, B, Gp, Gap, fringe.global, fringe.phase_reference
+    target_interp: ["nearest", "nearest", "linear", "linear", "linear", "linear"]
+
+fringe_fitting:
+  enabled: true
+  global:
+    field: "J0319+4130"
+    caltable: "cal.fringe.global"
+    solint: "inf"
+    refant: "BR"
+    minsnr: 5.0
+  phase_reference:
+    field: "J1234+5678"
+    caltable: "cal.fringe.phasecal"
+    solint: "scan"
+    refant: "BR"
+    minsnr: 4.0
+  apply_to_target: true
+
+imaging:
+  imagename: "target_phase_ref_vlbi"
+  cell: "0.5mas"
+  imsize: [2048, 2048]
+  weighting: "briggs"
+  robust: 0.5
+  niter: 20000
+  threshold: "0.5mJy"
+  specmode: "mfs"
+  deconvolver: "mtmfs"
+  nterms: 2
+  interactive: false
+
+selfcal:
+  enabled: false
+  rounds: []

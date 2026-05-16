@@ -11,7 +11,7 @@ Applies to: the repository/package generated in this project
 
 The package is intended to make a common phase-referenced continuum calibration sequence reproducible and scriptable. Instead of editing a large CASA script for every observation, you describe the observation and calibration choices in a YAML configuration file, then run the pipeline through a command-line interface.
 
-The current implementation is best understood as a robust generic connected-interferometer pipeline skeleton. It supports VLA-like, ALMA-like, and generic CASA workflows at the configuration level, but it does not yet implement observatory-certified pipeline recipes. The `vlbi` profile is available for validation and future extension, but the current pipeline does not yet implement full VLBI-specific calibration such as global fringe fitting, EOP correction, ionospheric TEC correction, pulse-cal handling, or delay/rate solution transfer.
+The current implementation is best understood as a robust generic connected-interferometer pipeline skeleton. It supports VLA-like, ALMA-like, generic, and VLBI profile workflows at the configuration level. The VLBI path now includes optional fringe fitting (`fringe_fitting`) for global and/or phase-reference solves, with optional transfer to the target. It is still not a full observatory-certified VLBI pipeline: EOP correction, ionospheric TEC correction, pulse-cal handling, and additional observatory-specific amplitude/delay-rate practices remain user responsibilities.
 
 ---
 
@@ -144,7 +144,7 @@ This command:
 Example warnings include:
 
 - the Measurement Set path does not exist at validation time
-- `vlbi` profile is selected even though the current pipeline is not a full VLBI pipeline
+- `vlbi` profile is selected; fringe fitting is available, but full observatory-specific VLBI calibration still requires additional steps outside this generic pipeline
 - `selfcal.enabled=true` but no self-calibration rounds are configured
 
 Use this command before running CASA.
@@ -201,6 +201,42 @@ casa-phase-ref clean-products configs/example-phase-ref.yaml --yes
 ```
 
 This command removes the entire directory named by `execution.output_dir`. Use with care.
+
+
+
+### 4.5 `run` with VLBI fringe fitting (complete example)
+
+A complete fringe-fitting configuration is provided at:
+
+```text
+configs/example-vlbi-fringe-fit.yaml
+```
+
+Validate first:
+
+```bash
+casa-phase-ref validate configs/example-vlbi-fringe-fit.yaml
+```
+
+Then run inside a CASA-capable environment:
+
+```bash
+casa-phase-ref run configs/example-vlbi-fringe-fit.yaml
+```
+
+If you are using the CASA launcher:
+
+```bash
+casa --nogui -c scripts/run-in-casa.py run configs/example-vlbi-fringe-fit.yaml
+```
+
+This example enables both fringe-fit solve blocks:
+
+- `fringe_fitting.global` for a global/fringe-finder solve table
+- `fringe_fitting.phase_reference` for a phase calibrator solve table
+- `fringe_fitting.apply_to_target: true` so those fringe tables are included during target `applycal`
+
+Important: `calibration.apply.target_interp` must have one entry per active gaintable. In this example there are six tables (delay, bandpass, phase gain, amplitude gain, global fringe, phase-reference fringe), so `target_interp` has six entries.
 
 ---
 
@@ -571,7 +607,7 @@ vlbi
 Current behavior:
 
 - `generic`, `vla`, and `alma` all use the same generic pipeline path.
-- `vlbi` emits a warning because the current implementation does not yet perform full VLBI fringe-fitting and VLBI-specific a priori corrections.
+- `vlbi` emits a warning to indicate you are using a generic framework: fringe fitting is supported, but full VLBI a priori and observatory-certified processing are still your responsibility.
 
 Example:
 
@@ -1577,7 +1613,7 @@ observatory:
   profile: "vlbi"
 ```
 
-Validation will succeed but emit a warning. The current pipeline is not a full VLBI phase-referencing pipeline. Use this only as a placeholder for future extension, or modify the pipeline to add VLBI-specific steps before scientific use.
+Validation will succeed but emit a warning. The pipeline supports configurable fringe fitting in VLBI mode, but it is still not a full observatory-certified VLBI phase-referencing pipeline. Add observatory-required a priori and post-calibration steps before scientific use.
 
 ---
 
@@ -2101,7 +2137,7 @@ or choose a better `refant`.
 
 This is expected. The current pipeline does not implement full VLBI calibration.
 
-For VLBI, you would normally extend the pipeline with fringe fitting, EOP, ionosphere, amplitude calibration, and VLBI-specific phase-reference transfer logic.
+For VLBI, extend this generic workflow with EOP/ionosphere corrections, observatory-specific amplitude calibration, and any additional station-specific phase-reference transfer requirements. Fringe fitting is already configurable via `fringe_fitting`.
 
 ---
 
