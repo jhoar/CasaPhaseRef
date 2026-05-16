@@ -20,6 +20,47 @@ from .validation import inspect_measurement_set, validate_static_config
 CasaTasks = dict[str, Any]
 
 
+def compose_gaintable_chain(
+    cfg: PhaseRefConfig,
+    *,
+    tec_table: str | None = None,
+    eop_table: str | None = None,
+    pulsecal_table: str | None = None,
+    delay_table: str | None = None,
+    bandpass_table: str | None = None,
+    fringe_global_table: str | None = None,
+    fringe_phase_table: str | None = None,
+    phase_gain_table: str | None = None,
+    amplitude_gain_table: str | None = None,
+    include_pulsecal_for_calibrators: bool = False,
+    include_pulsecal_for_target: bool = False,
+    include_fringe_for_target: bool = False,
+) -> list[str]:
+    chain: list[str] = []
+    if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.vlbi.eop.enabled and eop_table:
+        chain.append(eop_table)
+    if cfg.calibration.ionosphere.enabled and tec_table:
+        chain.append(tec_table)
+    if include_pulsecal_for_calibrators and cfg.calibration.pulsecal.enabled and pulsecal_table:
+        chain.append(pulsecal_table)
+    if cfg.calibration.delay.enabled and delay_table:
+        chain.append(delay_table)
+    if cfg.calibration.bandpass.enabled and bandpass_table:
+        chain.append(bandpass_table)
+    if include_fringe_for_target and cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled:
+        if fringe_global_table and cfg.fringe_fitting.global_fit is not None:
+            chain.append(fringe_global_table)
+        if fringe_phase_table and cfg.fringe_fitting.phase_reference is not None:
+            chain.append(fringe_phase_table)
+    if include_pulsecal_for_target and cfg.calibration.pulsecal.enabled and pulsecal_table:
+        chain.append(pulsecal_table)
+    if phase_gain_table:
+        chain.append(phase_gain_table)
+    if amplitude_gain_table:
+        chain.append(amplitude_gain_table)
+    return chain
+
+
 def _call_step(step: str, func: Callable[[], None], summary: dict[str, Any]) -> None:
     try:
         func()
@@ -263,15 +304,15 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         write_json(paths.reports / "run-summary.json", summary)
         return summary
 
-    base_gaintables: list[str] = []
-    if cfg.calibration.ionosphere.enabled:
-        base_gaintables.append(str(tec_cal))
-    if cfg.calibration.delay.enabled:
-        base_gaintables.append(str(delay_cal))
-    if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_calibrators:
-        base_gaintables.append(str(pulsecal_table))
-    if cfg.calibration.bandpass.enabled:
-        base_gaintables.append(str(bp_cal))
+    base_gaintables = compose_gaintable_chain(
+        cfg,
+        tec_table=str(tec_cal),
+        eop_table=str(paths.calibration / "cal.EOP"),
+        pulsecal_table=str(pulsecal_table),
+        delay_table=str(delay_cal),
+        bandpass_table=str(bp_cal),
+        include_pulsecal_for_calibrators=pulsecal_apply_to_calibrators,
+    )
 
     def gains_step() -> None:
         casa["gaincal"](
@@ -310,9 +351,17 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
             )
         if cfg.fringe_fitting.phase_reference is not None and fringe_phase_cal is not None:
             phase_fit = cfg.fringe_fitting.phase_reference
-            fringe_gaintables = list(base_gaintables)
-            if fringe_global_cal is not None:
-                fringe_gaintables.append(str(fringe_global_cal))
+            fringe_gaintables = compose_gaintable_chain(
+                cfg,
+                tec_table=str(tec_cal),
+                eop_table=str(paths.calibration / "cal.EOP"),
+                pulsecal_table=str(pulsecal_table),
+                delay_table=str(delay_cal),
+                bandpass_table=str(bp_cal),
+                fringe_global_table=str(fringe_global_cal) if fringe_global_cal is not None else None,
+                include_pulsecal_for_calibrators=pulsecal_apply_to_calibrators,
+                include_fringe_for_target=True,
+            )
             casa["fringefit"](
                 vis=vis,
                 caltable=str(fringe_phase_cal),
@@ -351,24 +400,33 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         write_json(paths.reports / "run-summary.json", summary)
         return summary
 
-    fringe_gaintables_for_apply: list[str] = []
-    fringe_gainfields: list[str] = []
-    if (
+    include_fringe_for_apply = (
         cfg.observatory.profile == ObservatoryProfile.VLBI
         and cfg.fringe_fitting.enabled
         and cfg.fringe_fitting.apply_to_target
-    ):
+    )
+    gaintables = compose_gaintable_chain(
+        cfg,
+        tec_table=str(tec_cal),
+        eop_table=str(paths.calibration / "cal.EOP"),
+        pulsecal_table=str(pulsecal_table),
+        delay_table=str(delay_cal),
+        bandpass_table=str(bp_cal),
+        fringe_global_table=str(fringe_global_cal) if fringe_global_cal is not None else None,
+        fringe_phase_table=str(fringe_phase_cal) if fringe_phase_cal is not None else None,
+        phase_gain_table=str(phase_cal),
+        amplitude_gain_table=str(flux_cal),
+        include_pulsecal_for_calibrators=pulsecal_apply_to_calibrators,
+        include_pulsecal_for_target=pulsecal_apply_to_target and not pulsecal_apply_to_calibrators,
+        include_fringe_for_target=include_fringe_for_apply,
+    )
+
+    fringe_gainfields: list[str] = []
+    if include_fringe_for_apply:
         if fringe_global_cal is not None and cfg.fringe_fitting.global_fit is not None:
-            fringe_gaintables_for_apply.append(str(fringe_global_cal))
             fringe_gainfields.append(cfg.fringe_fitting.global_fit.field)
         if fringe_phase_cal is not None and cfg.fringe_fitting.phase_reference is not None:
-            fringe_gaintables_for_apply.append(str(fringe_phase_cal))
             fringe_gainfields.append(cfg.fringe_fitting.phase_reference.field)
-
-    gaintables = list(base_gaintables)
-    if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_target and not pulsecal_apply_to_calibrators:
-        gaintables.append(str(pulsecal_table))
-    gaintables = gaintables + fringe_gaintables_for_apply + [str(phase_cal), str(flux_cal)]
 
     band_gainfields: list[str] = []
     if cfg.calibration.delay.enabled:
