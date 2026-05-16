@@ -379,7 +379,7 @@ def test_pipeline_pulsecal_auto_added_to_applycal_and_qa(example_config_path, fa
     target_apply_call = next(call for call in fake_casa_tasks["applycal"].call_args_list if call.kwargs.get("field") == "TARGET")
     assert any("cal.pulsecal.G" in table for table in target_apply_call.kwargs["gaintable"])
     assert "pulsecal" in summary["qa"]
-    assert target_apply_call.kwargs["gainfield"][0:3] == ["", "3C286", "3C286"]
+    assert target_apply_call.kwargs["gainfield"][0:3] == ["3C286", "3C286", ""]
 
 
 def test_pipeline_pulsecal_apply_to_both_keeps_gainfield_and_gaintable_lengths_aligned(

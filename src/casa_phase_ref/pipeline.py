@@ -445,14 +445,14 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     band_gainfields_target: list[str] = []
     if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_calibrators:
         band_gainfields_calibrators.append("")
-    if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_target:
-        band_gainfields_target.append("")
     if cfg.calibration.delay.enabled:
         band_gainfields_calibrators.append(delay_field)
         band_gainfields_target.append(delay_field)
     if cfg.calibration.bandpass.enabled:
         band_gainfields_calibrators.append(bandpass_field)
         band_gainfields_target.append(bandpass_field)
+    if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_target:
+        band_gainfields_target.append("")
 
     def applycal_step() -> None:
         casa["applycal"](
