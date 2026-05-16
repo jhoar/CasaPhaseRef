@@ -21,6 +21,7 @@ class StopAfter(str, Enum):
     SETJY = "setjy"
     DELAY = "delay"
     BANDPASS = "bandpass"
+    FRINGE_FIT = "fringe_fit"
     GAINS = "gains"
     FLUXSCALE = "fluxscale"
     APPLYCAL = "applycal"
@@ -100,6 +101,22 @@ class CalibrationConfig(BaseModel):
     apply: CalibrationApplyConfig = Field(default_factory=CalibrationApplyConfig)
 
 
+class FringeFitSolveConfig(BaseModel):
+    field: str
+    # Name of the caltable created under the run calibration directory.
+    caltable_name: str = Field(alias="caltable")
+    solint: str
+    refant: str
+    minsnr: float = 5.0
+
+
+class FringeFittingConfig(BaseModel):
+    enabled: bool = False
+    global_fit: FringeFitSolveConfig | None = Field(default=None, alias="global")
+    phase_reference: FringeFitSolveConfig | None = None
+    apply_to_target: bool = True
+
+
 class ImagingConfig(BaseModel):
     imagename: str = "target_phase_ref"
     cell: str = "0.2arcsec"
@@ -151,6 +168,7 @@ class PhaseRefConfig(BaseModel):
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     flagging: FlaggingConfig = Field(default_factory=FlaggingConfig)
     calibration: CalibrationConfig = Field(default_factory=CalibrationConfig)
+    fringe_fitting: FringeFittingConfig = Field(default_factory=FringeFittingConfig)
     imaging: ImagingConfig = Field(default_factory=ImagingConfig)
     selfcal: SelfCalConfig = Field(default_factory=SelfCalConfig)
 
@@ -173,4 +191,4 @@ def dump_resolved_config(cfg: PhaseRefConfig, path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump(cfg.model_dump(mode="json"), handle, sort_keys=False)
+        yaml.safe_dump(cfg.model_dump(mode="json", by_alias=True), handle, sort_keys=False)

@@ -5,7 +5,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from casa_phase_ref.config import ManualFlagRule, StopAfter, load_config
+from casa_phase_ref.config import (
+    FringeFitSolveConfig,
+    ManualFlagRule,
+    StopAfter,
+    load_config,
+)
 from casa_phase_ref.errors import ValidationReportError
 from casa_phase_ref.pipeline import run_pipeline
 
@@ -18,6 +23,7 @@ def fake_casa_tasks():
         "flagdata",
         "flagmanager",
         "fluxscale",
+        "fringefit",
         "gaincal",
         "listobs",
         "setjy",
@@ -204,3 +210,98 @@ def test_pipeline_warnings_emitted_for_missing_vis(
     # example config points to my_observation.ms which does not exist
     summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
     assert any("does not exist" in w for w in summary["warnings"])
+
+
+def test_pipeline_vlbi_runs_fringefit_and_applies_phase_reference(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    from casa_phase_ref.config import ObservatoryProfile
+
+    cfg.observatory.profile = ObservatoryProfile.VLBI
+    cfg.fringe_fitting.enabled = True
+    cfg.fringe_fitting.global_fit = FringeFitSolveConfig(
+        field="3C286",
+        caltable="cal.fringe.global",
+        solint="inf",
+        refant="ea10",
+        minsnr=5.0,
+    )
+    cfg.fringe_fitting.phase_reference = FringeFitSolveConfig(
+        field="J1234+5678",
+        caltable="cal.fringe.phasecal",
+        solint="scan",
+        refant="ea10",
+        minsnr=4.0,
+    )
+    cfg.calibration.apply.target_interp = [
+        "nearest", "nearest", "linear", "linear", "nearest", "linear"
+    ]
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert fake_casa_tasks["fringefit"].call_count == 2
+    target_apply_call = next(
+        call
+        for call in fake_casa_tasks["applycal"].call_args_list
+        if call.kwargs.get("field") == "TARGET"
+    )
+    assert target_apply_call.kwargs["gainfield"][-4:] == ["3C286", "J1234+5678", "J1234+5678", "J1234+5678"]
+
+
+def test_pipeline_non_vlbi_has_no_fringe_step(example_config_path, fake_casa_tasks, tmp_path):
+    cfg = _cfg(example_config_path, tmp_path)
+    summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert all(step["name"] != "fringe_fit" for step in summary["steps"])
+
+
+def test_pipeline_vlbi_apply_to_target_false_skips_fringe_tables_on_target(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    from casa_phase_ref.config import ObservatoryProfile
+
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.observatory.profile = ObservatoryProfile.VLBI
+    cfg.fringe_fitting.enabled = True
+    cfg.fringe_fitting.apply_to_target = False
+    cfg.fringe_fitting.global_fit = FringeFitSolveConfig(
+        field="3C286",
+        caltable="cal.fringe.global",
+        solint="inf",
+        refant="ea10",
+        minsnr=5.0,
+    )
+    cfg.fringe_fitting.phase_reference = FringeFitSolveConfig(
+        field="J1234+5678",
+        caltable="cal.fringe.phasecal",
+        solint="scan",
+        refant="ea10",
+        minsnr=4.0,
+    )
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "linear", "linear"]
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    target_apply_call = next(
+        call
+        for call in fake_casa_tasks["applycal"].call_args_list
+        if call.kwargs.get("field") == "TARGET"
+    )
+    gaintables = target_apply_call.kwargs["gaintable"]
+    assert all("cal.fringe.global" not in table for table in gaintables)
+    assert all("cal.fringe.phasecal" not in table for table in gaintables)
+
+
+def test_pipeline_can_stop_after_fringe_fit(example_config_path, fake_casa_tasks, tmp_path):
+    from casa_phase_ref.config import ObservatoryProfile
+
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.observatory.profile = ObservatoryProfile.VLBI
+    cfg.execution.stop_after = StopAfter.FRINGE_FIT
+    cfg.fringe_fitting.enabled = True
+    cfg.fringe_fitting.global_fit = FringeFitSolveConfig(
+        field="3C286",
+        caltable="cal.fringe.global",
+        solint="inf",
+        refant="ea10",
+    )
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "linear", "linear", "linear"]
+    summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert summary["steps"][-1]["name"] == "fringe_fit"
+    assert not fake_casa_tasks["fluxscale"].called

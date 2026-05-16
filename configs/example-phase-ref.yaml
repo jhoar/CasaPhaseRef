@@ -51,6 +51,12 @@ calibration:
   apply:
     target_interp: ["nearest", "nearest", "linear", "linear"]
 
+fringe_fitting:
+  enabled: false
+  global: null
+  phase_reference: null
+  apply_to_target: true
+
 imaging:
   imagename: "target_phase_ref"
   cell: "0.2arcsec"
