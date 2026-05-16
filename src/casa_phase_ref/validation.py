@@ -13,6 +13,15 @@ def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
         warnings.append(
             "VLBI profile selected. Fringe fitting is available when fringe_fitting.enabled=true; add EOP/ionosphere/a-priori telescope calibration as needed for your observatory workflow."
         )
+    if (
+        cfg.observatory.profile == ObservatoryProfile.VLBI
+        and cfg.fringe_fitting.enabled
+        and cfg.fringe_fitting.global_fit is None
+        and cfg.fringe_fitting.phase_reference is None
+    ):
+        raise ValidationReportError(
+            "fringe_fitting.enabled=true requires at least one solve: fringe_fitting.global or fringe_fitting.phase_reference."
+        )
     if cfg.selfcal.enabled:
         raise ValidationReportError(
             "selfcal is not yet implemented. Set selfcal.enabled=false."
@@ -20,11 +29,13 @@ def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
     expected_tables = (
         2 + int(cfg.calibration.delay.enabled) + int(cfg.calibration.bandpass.enabled)
     )
-    if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled:
+    if (
+        cfg.observatory.profile == ObservatoryProfile.VLBI
+        and cfg.fringe_fitting.enabled
+        and cfg.fringe_fitting.apply_to_target
+    ):
         expected_tables += int(cfg.fringe_fitting.global_fit is not None)
-        expected_tables += int(
-            cfg.fringe_fitting.phase_reference is not None and cfg.fringe_fitting.apply_to_target
-        )
+        expected_tables += int(cfg.fringe_fitting.phase_reference is not None)
     actual = len(cfg.calibration.apply.target_interp)
     if actual != expected_tables:
         raise ValidationReportError(

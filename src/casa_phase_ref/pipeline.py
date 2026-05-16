@@ -74,9 +74,9 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     fringe_phase_cal: Path | None = None
     if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled:
         if cfg.fringe_fitting.global_fit is not None:
-            fringe_global_cal = paths.calibration / cfg.fringe_fitting.global_fit.caltable
+            fringe_global_cal = paths.calibration / cfg.fringe_fitting.global_fit.caltable_name
         if cfg.fringe_fitting.phase_reference is not None:
-            fringe_phase_cal = paths.calibration / cfg.fringe_fitting.phase_reference.caltable
+            fringe_phase_cal = paths.calibration / cfg.fringe_fitting.phase_reference.caltable_name
 
     products_to_check: list[Path] = [
         delay_cal,
@@ -243,9 +243,9 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
             )
         if cfg.fringe_fitting.phase_reference is not None and fringe_phase_cal is not None:
             phase_fit = cfg.fringe_fitting.phase_reference
-            gaintables = list(base_gaintables)
+            fringe_gaintables = list(base_gaintables)
             if fringe_global_cal is not None:
-                gaintables.append(str(fringe_global_cal))
+                fringe_gaintables.append(str(fringe_global_cal))
             casa["fringefit"](
                 vis=vis,
                 caltable=str(fringe_phase_cal),
@@ -253,11 +253,15 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
                 solint=phase_fit.solint,
                 refant=phase_fit.refant,
                 minsnr=phase_fit.minsnr,
-                gaintable=gaintables,
+                gaintable=fringe_gaintables,
             )
 
-    logger.info("Solving fringe fitting (VLBI profile)")
-    _call_step("fringe_fit", fringe_fit_step, summary)
+    if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled:
+        logger.info("Solving fringe fitting (VLBI profile)")
+        _call_step("fringe_fit", fringe_fit_step, summary)
+        if _should_stop(cfg, StopAfter.FRINGE_FIT):
+            write_json(paths.reports / "run-summary.json", summary)
+            return summary
 
     logger.info("Solving gain calibration")
     _call_step("gains", gains_step, summary)
@@ -280,12 +284,22 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         write_json(paths.reports / "run-summary.json", summary)
         return summary
 
-    gaintables = base_gaintables + [str(phase_cal), str(flux_cal)]
-    if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled:
-        if fringe_global_cal is not None:
-            gaintables.append(str(fringe_global_cal))
-        if fringe_phase_cal is not None and cfg.fringe_fitting.apply_to_target:
-            gaintables.append(str(fringe_phase_cal))
+    fringe_gaintables_for_apply: list[str] = []
+    fringe_gainfields: list[str] = []
+    if (
+        cfg.observatory.profile == ObservatoryProfile.VLBI
+        and cfg.fringe_fitting.enabled
+        and cfg.fringe_fitting.apply_to_target
+    ):
+        if fringe_global_cal is not None and cfg.fringe_fitting.global_fit is not None:
+            fringe_gaintables_for_apply.append(str(fringe_global_cal))
+            fringe_gainfields.append(cfg.fringe_fitting.global_fit.field)
+        if fringe_phase_cal is not None and cfg.fringe_fitting.phase_reference is not None:
+            fringe_gaintables_for_apply.append(str(fringe_phase_cal))
+            fringe_gainfields.append(cfg.fringe_fitting.phase_reference.field)
+
+    gaintables = base_gaintables + fringe_gaintables_for_apply + [str(phase_cal), str(flux_cal)]
+
     band_gainfields: list[str] = []
     if cfg.calibration.delay.enabled:
         band_gainfields.append(delay_field)
@@ -297,7 +311,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
             vis=vis,
             field=fluxcal,
             gaintable=gaintables,
-            gainfield=band_gainfields + [fluxcal, fluxcal] + ([cfg.fringe_fitting.global_fit.field] if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled and fringe_global_cal is not None else []) + ([cfg.fringe_fitting.phase_reference.field] if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled and fringe_phase_cal is not None and cfg.fringe_fitting.apply_to_target else []),
+            gainfield=band_gainfields + fringe_gainfields + [fluxcal, fluxcal],
             interp=["nearest"] * len(gaintables),
             calwt=cfg.calwt,
         )
@@ -305,7 +319,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
             vis=vis,
             field=phasecal,
             gaintable=gaintables,
-            gainfield=band_gainfields + [phasecal, phasecal] + ([cfg.fringe_fitting.global_fit.field] if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled and fringe_global_cal is not None else []) + ([cfg.fringe_fitting.phase_reference.field] if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled and fringe_phase_cal is not None and cfg.fringe_fitting.apply_to_target else []),
+            gainfield=band_gainfields + fringe_gainfields + [phasecal, phasecal],
             interp=["nearest"] * len(gaintables),
             calwt=cfg.calwt,
         )
@@ -313,7 +327,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
             vis=vis,
             field=target,
             gaintable=gaintables,
-            gainfield=band_gainfields + [phasecal, phasecal] + ([cfg.fringe_fitting.global_fit.field] if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled and fringe_global_cal is not None else []) + ([cfg.fringe_fitting.phase_reference.field] if cfg.observatory.profile == ObservatoryProfile.VLBI and cfg.fringe_fitting.enabled and fringe_phase_cal is not None and cfg.fringe_fitting.apply_to_target else []),
+            gainfield=band_gainfields + fringe_gainfields + [phasecal, phasecal],
             interp=cfg.calibration.apply.target_interp,
             calwt=cfg.calwt,
         )

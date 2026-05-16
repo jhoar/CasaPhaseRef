@@ -21,6 +21,7 @@ class StopAfter(str, Enum):
     SETJY = "setjy"
     DELAY = "delay"
     BANDPASS = "bandpass"
+    FRINGE_FIT = "fringe_fit"
     GAINS = "gains"
     FLUXSCALE = "fluxscale"
     APPLYCAL = "applycal"
@@ -102,7 +103,8 @@ class CalibrationConfig(BaseModel):
 
 class FringeFitSolveConfig(BaseModel):
     field: str
-    caltable: str
+    # Name of the caltable created under the run calibration directory.
+    caltable_name: str = Field(alias="caltable")
     solint: str
     refant: str
     minsnr: float = 5.0
@@ -189,4 +191,4 @@ def dump_resolved_config(cfg: PhaseRefConfig, path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump(cfg.model_dump(mode="json"), handle, sort_keys=False)
+        yaml.safe_dump(cfg.model_dump(mode="json", by_alias=True), handle, sort_keys=False)

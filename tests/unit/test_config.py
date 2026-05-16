@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 from pydantic import ValidationError
 
-from casa_phase_ref.config import ObservatoryProfile, PhaseRefConfig, StopAfter, load_config
+from casa_phase_ref.config import (
+    ObservatoryProfile,
+    PhaseRefConfig,
+    StopAfter,
+    dump_resolved_config,
+    load_config,
+)
 
 
 def test_load_example_config(example_config_path):
@@ -92,3 +101,30 @@ def test_unknown_profile_fails():
                 "observatory": {"profile": "not-a-profile"},
             }
         )
+
+
+def test_dump_resolved_config_uses_global_alias(tmp_path):
+    cfg = PhaseRefConfig.model_validate(
+        {
+            "vis": "obs.ms",
+            "fluxcal": "3C286",
+            "bandcal": "3C286",
+            "phasecal": "J1234+5678",
+            "target": "TARGET",
+            "refant": "ea10",
+            "fringe_fitting": {
+                "enabled": True,
+                "global": {
+                    "field": "FRINGE",
+                    "caltable": "cal.fringe.global",
+                    "solint": "inf",
+                    "refant": "ea10",
+                },
+            },
+        }
+    )
+    out = tmp_path / "resolved.yaml"
+    dump_resolved_config(cfg, out)
+    data = yaml.safe_load(Path(out).read_text())
+    assert "global" in data["fringe_fitting"]
+    assert "global_fit" not in data["fringe_fitting"]

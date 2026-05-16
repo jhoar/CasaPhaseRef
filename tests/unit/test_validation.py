@@ -89,3 +89,9 @@ def test_validate_target_interp_adjusts_for_both_disabled():
     )
     warnings = validate_static_config(cfg)
     assert isinstance(warnings, list)
+
+
+def test_validate_raises_when_vlbi_fringe_enabled_without_solves():
+    cfg = _cfg(observatory={"profile": "vlbi"}, fringe_fitting={"enabled": True})
+    with pytest.raises(ValidationReportError, match="requires at least one solve"):
+        validate_static_config(cfg)

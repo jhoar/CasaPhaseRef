@@ -244,4 +244,64 @@ def test_pipeline_vlbi_runs_fringefit_and_applies_phase_reference(
         for call in fake_casa_tasks["applycal"].call_args_list
         if call.kwargs.get("field") == "TARGET"
     )
-    assert target_apply_call.kwargs["gainfield"][-2:] == ["3C286", "J1234+5678"]
+    assert target_apply_call.kwargs["gainfield"][-4:] == ["3C286", "J1234+5678", "J1234+5678", "J1234+5678"]
+
+
+def test_pipeline_non_vlbi_has_no_fringe_step(example_config_path, fake_casa_tasks, tmp_path):
+    cfg = _cfg(example_config_path, tmp_path)
+    summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert all(step["name"] != "fringe_fit" for step in summary["steps"])
+
+
+def test_pipeline_vlbi_apply_to_target_false_skips_fringe_tables_on_target(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    from casa_phase_ref.config import ObservatoryProfile
+
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.observatory.profile = ObservatoryProfile.VLBI
+    cfg.fringe_fitting.enabled = True
+    cfg.fringe_fitting.apply_to_target = False
+    cfg.fringe_fitting.global_fit = FringeFitSolveConfig(
+        field="3C286",
+        caltable="cal.fringe.global",
+        solint="inf",
+        refant="ea10",
+        minsnr=5.0,
+    )
+    cfg.fringe_fitting.phase_reference = FringeFitSolveConfig(
+        field="J1234+5678",
+        caltable="cal.fringe.phasecal",
+        solint="scan",
+        refant="ea10",
+        minsnr=4.0,
+    )
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "linear", "linear"]
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    target_apply_call = next(
+        call
+        for call in fake_casa_tasks["applycal"].call_args_list
+        if call.kwargs.get("field") == "TARGET"
+    )
+    gaintables = target_apply_call.kwargs["gaintable"]
+    assert all("cal.fringe.global" not in table for table in gaintables)
+    assert all("cal.fringe.phasecal" not in table for table in gaintables)
+
+
+def test_pipeline_can_stop_after_fringe_fit(example_config_path, fake_casa_tasks, tmp_path):
+    from casa_phase_ref.config import ObservatoryProfile
+
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.observatory.profile = ObservatoryProfile.VLBI
+    cfg.execution.stop_after = StopAfter.FRINGE_FIT
+    cfg.fringe_fitting.enabled = True
+    cfg.fringe_fitting.global_fit = FringeFitSolveConfig(
+        field="3C286",
+        caltable="cal.fringe.global",
+        solint="inf",
+        refant="ea10",
+    )
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "linear", "linear", "linear"]
+    summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert summary["steps"][-1]["name"] == "fringe_fit"
+    assert not fake_casa_tasks["fluxscale"].called
