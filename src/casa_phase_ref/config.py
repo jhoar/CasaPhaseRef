@@ -35,6 +35,16 @@ class ObservatoryConfig(BaseModel):
     apply_switched_power: bool = False
 
 
+class VlbiEopConfig(BaseModel):
+    enabled: bool = False
+    source: Literal["casa_auto", "file"] = "casa_auto"
+    file: str | None = None
+
+
+class VlbiConfig(BaseModel):
+    eop: VlbiEopConfig = Field(default_factory=VlbiEopConfig)
+
+
 class ExecutionConfig(BaseModel):
     output_dir: str = "runs/default"
     overwrite: bool = False
@@ -164,6 +174,7 @@ class PhaseRefConfig(BaseModel):
     calwt: bool = False
 
     observatory: ObservatoryConfig = Field(default_factory=ObservatoryConfig)
+    vlbi: VlbiConfig = Field(default_factory=VlbiConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     flagging: FlaggingConfig = Field(default_factory=FlaggingConfig)

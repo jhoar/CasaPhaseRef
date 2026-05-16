@@ -35,10 +35,16 @@ def test_validate_no_warnings_for_existing_vis(tmp_path):
     assert not any("does not exist" in w for w in warnings)
 
 
-def test_validate_warns_for_vlbi_profile():
+def test_validate_warns_for_vlbi_profile_when_eop_disabled():
     cfg = _cfg(observatory={"profile": "vlbi"})
     warnings = validate_static_config(cfg)
-    assert any("VLBI" in w for w in warnings)
+    assert any("vlbi.eop.enabled=false" in w for w in warnings)
+
+
+def test_validate_warns_for_vlbi_profile_when_eop_enabled():
+    cfg = _cfg(observatory={"profile": "vlbi"}, vlbi={"eop": {"enabled": True}})
+    warnings = validate_static_config(cfg)
+    assert any("EOP correction is enabled" in w for w in warnings)
 
 
 def test_validate_raises_when_selfcal_enabled():
