@@ -252,6 +252,9 @@ def test_pipeline_non_vlbi_has_no_fringe_step(example_config_path, fake_casa_tas
     cfg = _cfg(example_config_path, tmp_path)
     summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
     assert all(step["name"] != "fringe_fit" for step in summary["steps"])
+    assert all(step["name"] != "apply_tec_correction" for step in summary["steps"])
+    assert all(step["name"] != "apply_eop_correction" for step in summary["steps"])
+    assert all(step["name"] != "pulsecal" for step in summary["steps"])
 
 
 def test_pipeline_vlbi_apply_to_target_false_skips_fringe_tables_on_target(
@@ -329,6 +332,7 @@ def test_pipeline_vlbi_eop_enabled_runs_before_delay(
     cfg.observatory.profile = ObservatoryProfile.VLBI
     cfg.vlbi.eop.enabled = True
     cfg.vlbi.eop.source = "casa_auto"
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "nearest", "linear", "linear"]
     run_pipeline(cfg, casa_tasks=fake_casa_tasks)
     assert fake_casa_tasks["gencal"].called
     first_delay_index = next(i for i, c in enumerate(fake_casa_tasks["gaincal"].call_args_list) if c.kwargs.get("gaintype") == "K")
@@ -375,6 +379,39 @@ def test_pipeline_pulsecal_auto_added_to_applycal_and_qa(example_config_path, fa
     target_apply_call = next(call for call in fake_casa_tasks["applycal"].call_args_list if call.kwargs.get("field") == "TARGET")
     assert any("cal.pulsecal.G" in table for table in target_apply_call.kwargs["gaintable"])
     assert "pulsecal" in summary["qa"]
+    assert target_apply_call.kwargs["gainfield"][0:3] == ["3C286", "3C286", ""]
+
+
+def test_pipeline_pulsecal_apply_to_both_keeps_gainfield_and_gaintable_lengths_aligned(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.calibration.pulsecal.enabled = True
+    cfg.calibration.pulsecal.apply_to = "both"
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "nearest", "linear", "linear"]
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    apply_calls = [
+        call for call in fake_casa_tasks["applycal"].call_args_list if call.kwargs.get("field") in {"3C286", "J1234+5678", "TARGET"}
+    ]
+    assert len(apply_calls) == 3
+    for call in apply_calls:
+        assert len(call.kwargs["gainfield"]) == len(call.kwargs["gaintable"])
+
+
+def test_pipeline_pulsecal_apply_to_target_keeps_gainfield_and_gaintable_lengths_aligned(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.calibration.pulsecal.enabled = True
+    cfg.calibration.pulsecal.apply_to = "target"
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "nearest", "linear", "linear"]
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    apply_calls = [
+        call for call in fake_casa_tasks["applycal"].call_args_list if call.kwargs.get("field") in {"3C286", "J1234+5678", "TARGET"}
+    ]
+    assert len(apply_calls) == 3
+    for call in apply_calls:
+        assert len(call.kwargs["gainfield"]) == len(call.kwargs["gaintable"])
 
 
 def test_pipeline_pulsecal_manual_table_requires_existing_path(example_config_path, fake_casa_tasks, tmp_path):

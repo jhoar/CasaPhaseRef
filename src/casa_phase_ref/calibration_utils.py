@@ -79,9 +79,6 @@ def build_or_load_pulsecal_table(
     }
     return pulsecal_table, qa
 
-# rest
-
-
 def apply_eop_correction(
     ms_path: str,
     config: PhaseRefConfig,
