@@ -403,7 +403,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         and cfg.fringe_fitting.enabled
         and cfg.fringe_fitting.apply_to_target
     )
-    gaintables = compose_gaintable_chain(
+    calibrator_gaintables = compose_gaintable_chain(
         cfg,
         tec_table=str(tec_cal),
         eop_table=str(paths.calibration / "cal.EOP"),
@@ -415,7 +415,22 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         phase_gain_table=str(phase_cal),
         amplitude_gain_table=str(flux_cal),
         include_pulsecal_for_calibrators=pulsecal_apply_to_calibrators,
-        include_pulsecal_for_target=pulsecal_apply_to_target and not pulsecal_apply_to_calibrators,
+        include_pulsecal_for_target=False,
+        include_fringe_for_target=include_fringe_for_apply,
+    )
+    target_gaintables = compose_gaintable_chain(
+        cfg,
+        tec_table=str(tec_cal),
+        eop_table=str(paths.calibration / "cal.EOP"),
+        pulsecal_table=str(pulsecal_table),
+        delay_table=str(delay_cal),
+        bandpass_table=str(bp_cal),
+        fringe_global_table=str(fringe_global_cal) if fringe_global_cal is not None else None,
+        fringe_phase_table=str(fringe_phase_cal) if fringe_phase_cal is not None else None,
+        phase_gain_table=str(phase_cal),
+        amplitude_gain_table=str(flux_cal),
+        include_pulsecal_for_calibrators=False,
+        include_pulsecal_for_target=pulsecal_apply_to_target,
         include_fringe_for_target=include_fringe_for_apply,
     )
 
@@ -430,7 +445,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     band_gainfields_target: list[str] = []
     if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_calibrators:
         band_gainfields_calibrators.append("")
-    if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_target and not pulsecal_apply_to_calibrators:
+    if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_target:
         band_gainfields_target.append("")
     if cfg.calibration.delay.enabled:
         band_gainfields_calibrators.append(delay_field)
@@ -443,23 +458,23 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         casa["applycal"](
             vis=vis,
             field=fluxcal,
-            gaintable=gaintables,
+            gaintable=calibrator_gaintables,
             gainfield=band_gainfields_calibrators + fringe_gainfields + [fluxcal, fluxcal],
-            interp=["nearest"] * len(gaintables),
+            interp=["nearest"] * len(calibrator_gaintables),
             calwt=cfg.calwt,
         )
         casa["applycal"](
             vis=vis,
             field=phasecal,
-            gaintable=gaintables,
+            gaintable=calibrator_gaintables,
             gainfield=band_gainfields_calibrators + fringe_gainfields + [phasecal, phasecal],
-            interp=["nearest"] * len(gaintables),
+            interp=["nearest"] * len(calibrator_gaintables),
             calwt=cfg.calwt,
         )
         casa["applycal"](
             vis=vis,
             field=target,
-            gaintable=gaintables,
+            gaintable=target_gaintables,
             gainfield=band_gainfields_target + fringe_gainfields + [phasecal, phasecal],
             interp=cfg.calibration.apply.target_interp,
             calwt=cfg.calwt,
