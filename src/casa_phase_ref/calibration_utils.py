@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from .casa_runtime import load_casa_tasks
 from .config import PhaseRefConfig
@@ -13,6 +14,10 @@ class EopConfigurationError(ValueError):
 
 class TecConfigurationError(ValueError):
     """Raised when ionospheric TEC correction settings are invalid."""
+
+
+class PulsecalConfigurationError(ValueError):
+    """Raised when pulse-cal correction settings are invalid."""
 
 
 def _validate_eop_file(path: Path) -> None:
@@ -35,6 +40,46 @@ def _validate_ionex_file(path: Path) -> None:
         )
     if path.stat().st_size == 0:
         raise TecConfigurationError(f"IONEX file is empty: {path}")
+
+
+def build_or_load_pulsecal_table(
+    ms_path: str,
+    config: PhaseRefConfig,
+    casa_tasks: dict[str, object] | None = None,
+    logger: logging.Logger | None = None,
+    caltable_path: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    casa = casa_tasks if casa_tasks is not None else load_casa_tasks()
+    log = logger or logging.getLogger(__name__)
+    pulsecal_cfg = config.calibration.pulsecal
+
+    pulsecal_table = caltable_path or str(Path(ms_path).with_suffix('.pulsecal.G'))
+    if pulsecal_cfg.mode == 'manual_table':
+        if not pulsecal_cfg.table:
+            raise PulsecalConfigurationError('calibration.pulsecal.table is required when mode=manual_table')
+        manual = Path(pulsecal_cfg.table)
+        if not manual.exists():
+            raise PulsecalConfigurationError(f'Manual pulse-cal table not found: {manual}')
+        if not manual.is_dir():
+            raise PulsecalConfigurationError(f'Manual pulse-cal table must be a CASA table directory: {manual}')
+        log.info('Using manual pulse-cal table: %s', manual)
+        return str(manual), {'mode': 'manual_table', 'tones_detected': 'external', 'warnings': []}
+
+    log.info('Building pulse-cal table automatically from pulse tones')
+    casa['gencal'](vis=ms_path, caltable=pulsecal_table, caltype='pcal')
+    qa = {
+        'mode': 'auto',
+        'table': pulsecal_table,
+        'per_spw': [{'spw': 'all', 'tones_detected': 'unknown_in_mock_mode'}],
+        'failed_stations': [],
+        'residual_stats': {'phase_rms_deg': None, 'delay_rms_ns': None},
+        'warnings': [
+            'Automatic pulse-cal QA uses conservative placeholders unless observatory-specific parsers are provided.'
+        ],
+    }
+    return pulsecal_table, qa
+
+# rest
 
 
 def apply_eop_correction(

@@ -100,6 +100,13 @@ class CalibrationGainConfig(BaseModel):
     calmode: Literal["p", "a", "ap"]
 
 
+class PulsecalConfig(BaseModel):
+    enabled: bool = False
+    mode: Literal["auto", "manual_table"] = "auto"
+    table: str | None = None
+    apply_to: Literal["none", "calibrators", "target", "both"] = "both"
+
+
 class CalibrationApplyConfig(BaseModel):
     target_interp: list[str] = Field(
         default_factory=lambda: ["nearest", "nearest", "linear", "linear"]
@@ -117,6 +124,7 @@ class CalibrationConfig(BaseModel):
     )
     apply: CalibrationApplyConfig = Field(default_factory=CalibrationApplyConfig)
     ionosphere: IonosphereConfig = Field(default_factory=IonosphereConfig)
+    pulsecal: PulsecalConfig = Field(default_factory=PulsecalConfig)
 
 
 class FringeFitSolveConfig(BaseModel):

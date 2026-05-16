@@ -363,3 +363,26 @@ def test_pipeline_tec_uses_ionex_file_when_configured(
         c for c in fake_casa_tasks["gencal"].call_args_list if c.kwargs.get("caltype") == "tecim"
     )
     assert tec_call.kwargs["infile"] == str(ionex_file)
+
+
+def test_pipeline_pulsecal_auto_added_to_applycal_and_qa(example_config_path, fake_casa_tasks, tmp_path):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.calibration.pulsecal.enabled = True
+    cfg.calibration.pulsecal.apply_to = "both"
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "nearest", "linear", "linear"]
+    summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert fake_casa_tasks["gencal"].called
+    target_apply_call = next(call for call in fake_casa_tasks["applycal"].call_args_list if call.kwargs.get("field") == "TARGET")
+    assert any("cal.pulsecal.G" in table for table in target_apply_call.kwargs["gaintable"])
+    assert "pulsecal" in summary["qa"]
+
+
+def test_pipeline_pulsecal_manual_table_requires_existing_path(example_config_path, fake_casa_tasks, tmp_path):
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.calibration.pulsecal.enabled = True
+    cfg.calibration.pulsecal.mode = "manual_table"
+    cfg.calibration.pulsecal.table = str(tmp_path / "missing.tbl")
+    cfg.calibration.apply.target_interp = ["nearest", "nearest", "nearest", "linear", "linear"]
+    with pytest.raises(Exception, match="Pipeline step failed: pulsecal"):
+
+        run_pipeline(cfg, casa_tasks=fake_casa_tasks)

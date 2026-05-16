@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .casa_runtime import load_casa_tasks
-from .calibration_utils import apply_eop_correction, apply_tec_correction
+from .calibration_utils import apply_eop_correction, apply_tec_correction, build_or_load_pulsecal_table
 from .config import ObservatoryProfile, PhaseRefConfig, StopAfter
 from .errors import PipelineStepError, ValidationReportError
 from .run_context import (
@@ -66,6 +66,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     tec_cal = paths.calibration / f"{Path(vis).stem}.tec.G"
     bp_prephase_cal = paths.calibration / "cal.BPpre.G"
     bp_cal = paths.calibration / "cal.B"
+    pulsecal_table = paths.calibration / "cal.pulsecal.G"
     phase_cal = paths.calibration / "cal.Gp"
     amp_cal = paths.calibration / "cal.Gap"
     flux_cal = paths.calibration / "cal.fluxscale"
@@ -82,6 +83,7 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
 
     products_to_check: list[Path] = [
         tec_cal,
+        pulsecal_table,
         delay_cal,
         bp_prephase_cal,
         bp_cal,
@@ -182,6 +184,33 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
     logger.info("Applying VLBI EOP correction stage")
     _call_step("apply_eop_correction", eop_step, summary)
 
+
+    pulsecal_apply_to_calibrators = cfg.calibration.pulsecal.apply_to in {"calibrators", "both"}
+    pulsecal_apply_to_target = cfg.calibration.pulsecal.apply_to in {"target", "both"}
+    pulsecal_qa: dict[str, Any] | None = None
+
+    def pulsecal_step() -> None:
+        nonlocal pulsecal_qa
+        if not cfg.calibration.pulsecal.enabled:
+            return
+        table, qa = build_or_load_pulsecal_table(
+            vis,
+            cfg,
+            casa_tasks=casa,
+            logger=logger,
+            caltable_path=str(pulsecal_table),
+        )
+        if table != str(pulsecal_table):
+            pulsecal_table.parent.mkdir(parents=True, exist_ok=True)
+        pulsecal_qa = qa
+        summary["qa"]["pulsecal"] = qa
+        for warning in qa.get("warnings", []):
+            summary["warnings"].append(f"pulsecal: {warning}")
+            logger.warning("pulsecal: %s", warning)
+
+    logger.info("Preparing pulse-cal calibration")
+    _call_step("pulsecal", pulsecal_step, summary)
+
     def delay_step() -> None:
         if cfg.calibration.delay.enabled:
             casa["gaincal"](
@@ -239,6 +268,8 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         base_gaintables.append(str(tec_cal))
     if cfg.calibration.delay.enabled:
         base_gaintables.append(str(delay_cal))
+    if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_calibrators:
+        base_gaintables.append(str(pulsecal_table))
     if cfg.calibration.bandpass.enabled:
         base_gaintables.append(str(bp_cal))
 
@@ -334,13 +365,18 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
             fringe_gaintables_for_apply.append(str(fringe_phase_cal))
             fringe_gainfields.append(cfg.fringe_fitting.phase_reference.field)
 
-    gaintables = base_gaintables + fringe_gaintables_for_apply + [str(phase_cal), str(flux_cal)]
+    gaintables = list(base_gaintables)
+    if cfg.calibration.pulsecal.enabled and pulsecal_apply_to_target and not pulsecal_apply_to_calibrators:
+        gaintables.append(str(pulsecal_table))
+    gaintables = gaintables + fringe_gaintables_for_apply + [str(phase_cal), str(flux_cal)]
 
     band_gainfields: list[str] = []
     if cfg.calibration.delay.enabled:
         band_gainfields.append(delay_field)
     if cfg.calibration.bandpass.enabled:
         band_gainfields.append(bandpass_field)
+    if cfg.calibration.pulsecal.enabled and (pulsecal_apply_to_calibrators or pulsecal_apply_to_target):
+        band_gainfields.append("")
 
     def applycal_step() -> None:
         casa["applycal"](
