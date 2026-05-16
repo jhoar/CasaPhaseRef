@@ -61,6 +61,31 @@ runs/example_TARGET/
     └── run-summary.json
 ```
 
-## Warning
+## VLBI fringe fitting mode
 
-The `vlbi` profile is currently a validation/profile placeholder. A full VLBI implementation should add explicit fringe fitting, EOP, ionospheric correction, and telescope-specific a priori calibration.
+The `vlbi` observatory profile now supports an explicit CASA `fringefit` stage through the
+`fringe_fitting` config block. This keeps connected-array phase referencing and VLBI-style
+fringe solving as separate, explicit workflows.
+
+Minimal example:
+
+```yaml
+observatory:
+  profile: "vlbi"
+
+fringe_fitting:
+  enabled: true
+  global:
+    field: "FRINGE_FINDER"
+    caltable: "cal.fringe.global"
+    solint: "inf"
+    refant: "BR"
+    minsnr: 5.0
+  phase_reference:
+    field: "PHASE_CAL"
+    caltable: "cal.fringe.phasecal"
+    solint: "scan"
+    refant: "BR"
+    minsnr: 4.0
+  apply_to_target: true
+```
