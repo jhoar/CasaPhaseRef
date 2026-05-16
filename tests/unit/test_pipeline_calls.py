@@ -25,6 +25,7 @@ def fake_casa_tasks():
         "fluxscale",
         "fringefit",
         "gaincal",
+        "gencal",
         "listobs",
         "setjy",
         "split",
@@ -305,3 +306,30 @@ def test_pipeline_can_stop_after_fringe_fit(example_config_path, fake_casa_tasks
     summary = run_pipeline(cfg, casa_tasks=fake_casa_tasks)
     assert summary["steps"][-1]["name"] == "fringe_fit"
     assert not fake_casa_tasks["fluxscale"].called
+
+
+def test_pipeline_vlbi_eop_disabled_emits_warning_and_skips_gencal(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    from casa_phase_ref.config import ObservatoryProfile
+
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.observatory.profile = ObservatoryProfile.VLBI
+    cfg.vlbi.eop.enabled = False
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert fake_casa_tasks["gencal"].call_count == 0
+
+
+def test_pipeline_vlbi_eop_enabled_runs_before_delay(
+    example_config_path, fake_casa_tasks, tmp_path
+):
+    from casa_phase_ref.config import ObservatoryProfile
+
+    cfg = _cfg(example_config_path, tmp_path)
+    cfg.observatory.profile = ObservatoryProfile.VLBI
+    cfg.vlbi.eop.enabled = True
+    cfg.vlbi.eop.source = "casa_auto"
+    run_pipeline(cfg, casa_tasks=fake_casa_tasks)
+    assert fake_casa_tasks["gencal"].called
+    first_delay_index = next(i for i, c in enumerate(fake_casa_tasks["gaincal"].call_args_list) if c.kwargs.get("gaintype") == "K")
+    assert first_delay_index == 0

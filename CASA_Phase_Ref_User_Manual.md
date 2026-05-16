@@ -30,19 +30,20 @@ The main `run` command executes these steps:
    - optional `rflag`
    - optional manual flag rules
 6. Sets the flux calibrator model with `setjy`.
-7. Solves instrumental delay with `gaincal(..., gaintype="K")`, if enabled.
-8. Solves a short pre-bandpass phase solution.
-9. Solves bandpass calibration, if enabled.
-10. Solves phase gains for flux and phase calibrators.
-11. Solves amplitude gains for flux and phase calibrators.
-12. Transfers the absolute flux scale to the phase calibrator with `fluxscale`.
-13. Applies calibration to:
+7. For `observatory.profile: "vlbi"`, optionally applies EOP correction (`apply_eop_correction`) before delay/fringe solves when `vlbi.eop.enabled: true`.
+8. Solves instrumental delay with `gaincal(..., gaintype="K")`, if enabled.
+9. Solves a short pre-bandpass phase solution.
+10. Solves bandpass calibration, if enabled.
+11. Solves phase gains for flux and phase calibrators.
+12. Solves amplitude gains for flux and phase calibrators.
+13. Transfers the absolute flux scale to the phase calibrator with `fluxscale`.
+14. Applies calibration to:
     - the flux calibrator using flux calibrator gain solutions
     - the phase calibrator using phase calibrator gain solutions
     - the target using phase calibrator gain solutions
-14. Splits the corrected target data into a calibrated target Measurement Set.
-15. Images the target with `tclean`.
-16. Writes a machine-readable run summary.
+15. Splits the corrected target data into a calibrated target Measurement Set.
+16. Images the target with `tclean`.
+17. Writes a machine-readable run summary.
 
 The essential phase-referencing operation happens during target `applycal`: the target receives delay/bandpass solutions from the delay/bandpass calibrator and time-interpolated gain solutions from the phase calibrator.
 
@@ -2282,3 +2283,47 @@ Before running the full pipeline, confirm:
 - `target_interp` length matches the number of enabled calibration tables.
 - for VLBI, the generic pipeline has been extended before scientific use.
 
+
+
+## 6. VLBI-specific EOP correction configuration
+
+EOP correction is configured under `vlbi.eop` and runs after `setjy` and before delay/fringe solves.
+
+### 6.1 CASA automatic EOP source
+
+```yaml
+observatory:
+  profile: "vlbi"
+
+vlbi:
+  eop:
+    enabled: true
+    source: "casa_auto"
+```
+
+### 6.2 EOP from file
+
+```yaml
+observatory:
+  profile: "vlbi"
+
+vlbi:
+  eop:
+    enabled: true
+    source: "file"
+    file: "/path/to/iers.eop"
+```
+
+When `source: "file"`, the file must exist and use one of these extensions: `.txt`, `.dat`, or `.eop`.
+
+### 6.3 Calibration order (VLBI profile)
+
+1. `listobs` inspection
+2. flagging
+3. `setjy`
+4. `apply_eop_correction` (if enabled)
+5. delay solve (`gaincal`, K)
+6. bandpass pre-phase + bandpass
+7. optional `fringefit` solves
+8. gains + `fluxscale`
+9. `applycal` / split / image

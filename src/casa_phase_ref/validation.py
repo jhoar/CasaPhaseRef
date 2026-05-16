@@ -10,9 +10,14 @@ from .errors import ValidationReportError
 def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
     warnings: list[str] = []
     if cfg.observatory.profile == ObservatoryProfile.VLBI:
-        warnings.append(
-            "VLBI profile selected. Fringe fitting is available when fringe_fitting.enabled=true; add EOP/ionosphere/a-priori telescope calibration as needed for your observatory workflow."
-        )
+        if cfg.vlbi.eop.enabled:
+            warnings.append(
+                "VLBI profile selected. EOP correction is enabled via vlbi.eop and will run before delay/fringe solves."
+            )
+        else:
+            warnings.append(
+                "VLBI profile selected, but vlbi.eop.enabled=false. Enable EOP correction unless your observatory workflow already applied EOP externally."
+            )
     if (
         cfg.observatory.profile == ObservatoryProfile.VLBI
         and cfg.fringe_fitting.enabled

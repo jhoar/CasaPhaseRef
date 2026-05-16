@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .casa_runtime import load_casa_tasks
+from .calibration_utils import apply_eop_correction
 from .config import ObservatoryProfile, PhaseRefConfig, StopAfter
 from .errors import PipelineStepError, ValidationReportError
 from .run_context import (
@@ -147,6 +148,23 @@ def run_pipeline(cfg: PhaseRefConfig, casa_tasks: CasaTasks | None = None) -> di
         return summary
 
     delay_field = cfg.calibration.delay.field or bandcal
+
+    def eop_step() -> None:
+        if cfg.observatory.profile != ObservatoryProfile.VLBI:
+            return
+        if not cfg.vlbi.eop.enabled:
+            logger.warning("VLBI profile active but vlbi.eop.enabled=false; skipping EOP correction")
+            return
+        apply_eop_correction(
+            vis,
+            cfg,
+            casa_tasks=casa,
+            logger=logger,
+            caltable_path=str(paths.calibration / "cal.EOP"),
+        )
+
+    logger.info("Applying VLBI EOP correction stage")
+    _call_step("apply_eop_correction", eop_step, summary)
 
     def delay_step() -> None:
         if cfg.calibration.delay.enabled:
