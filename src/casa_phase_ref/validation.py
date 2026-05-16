@@ -10,6 +10,14 @@ from .errors import ValidationReportError
 def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
     warnings: list[str] = []
     if cfg.observatory.profile == ObservatoryProfile.VLBI:
+        if cfg.calibration.ionosphere.enabled:
+            warnings.append(
+                "VLBI profile selected. Ionospheric TEC correction is enabled via calibration.ionosphere and will run before fringe/delay solves."
+            )
+        else:
+            warnings.append(
+                "VLBI profile selected, but calibration.ionosphere.enabled=false. Consider enabling TEC correction for long-baseline low-frequency observations."
+            )
         if cfg.vlbi.eop.enabled:
             warnings.append(
                 "VLBI profile selected. EOP correction is enabled via vlbi.eop and will run before delay/fringe solves."
@@ -32,7 +40,10 @@ def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
             "selfcal is not yet implemented. Set selfcal.enabled=false."
         )
     expected_tables = (
-        2 + int(cfg.calibration.delay.enabled) + int(cfg.calibration.bandpass.enabled)
+        2
+        + int(cfg.calibration.ionosphere.enabled)
+        + int(cfg.calibration.delay.enabled)
+        + int(cfg.calibration.bandpass.enabled)
     )
     if (
         cfg.observatory.profile == ObservatoryProfile.VLBI
@@ -51,6 +62,16 @@ def validate_static_config(cfg: PhaseRefConfig) -> list[str]:
         )
     if not Path(cfg.vis).exists():
         warnings.append(f"Measurement Set path does not exist at validation time: {cfg.vis}")
+    if cfg.calibration.ionosphere.enabled and cfg.calibration.ionosphere.tec_source == "ionex_file":
+        ionex_file = cfg.calibration.ionosphere.ionex_file
+        if not ionex_file:
+            raise ValidationReportError(
+                "calibration.ionosphere.ionex_file must be set when ionosphere.enabled=true and tec_source=ionex_file."
+            )
+        if not Path(ionex_file).exists():
+            raise ValidationReportError(
+                f"IONEX file not found: {ionex_file}. Provide a valid path or switch tec_source to auto."
+            )
     return warnings
 
 

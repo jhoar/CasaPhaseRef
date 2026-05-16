@@ -45,6 +45,13 @@ class VlbiConfig(BaseModel):
     eop: VlbiEopConfig = Field(default_factory=VlbiEopConfig)
 
 
+class IonosphereConfig(BaseModel):
+    enabled: bool = False
+    tec_source: Literal["auto", "ionex_file"] = "auto"
+    ionex_file: str | None = None
+    interp: str = "linear"
+
+
 class ExecutionConfig(BaseModel):
     output_dir: str = "runs/default"
     overwrite: bool = False
@@ -109,6 +116,7 @@ class CalibrationConfig(BaseModel):
         default_factory=lambda: CalibrationGainConfig(solint="inf", calmode="ap")
     )
     apply: CalibrationApplyConfig = Field(default_factory=CalibrationApplyConfig)
+    ionosphere: IonosphereConfig = Field(default_factory=IonosphereConfig)
 
 
 class FringeFitSolveConfig(BaseModel):
